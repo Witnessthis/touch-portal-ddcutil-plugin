@@ -1,6 +1,6 @@
 {
   "sdk": 13,
-  "version": 1,
+  "version": 2,
   "name": "ddcutil Bridge",
   "id": "ddcutilbridge",
   "plugin_start_cmd": "env TP_PORT=12136 python3 %TP_PLUGIN_FOLDER%ddcutil-bridge/bin/daemon.py",
@@ -23,10 +23,29 @@
         {
           "id": "ddcutilbridge.action.changeinput",
           "name": "Change Input",
-          "prefix": "ddcutil Bridge",
           "type": "communicate",
-          "tryInline": true,
-          "format": "Change monitor input to {$ddcutilbridge.action.changeinput.source$}",
+          "lines": {
+            "action": [
+              {
+                "language": "default",
+                "data": [
+                  {
+                    "lineFormat": "Change monitor input to {$ddcutilbridge.action.changeinput.source$}"
+                  }
+                ]
+              }
+            ],
+            "onhold": [
+              {
+                "language": "default",
+                "data": [
+                  {
+                    "lineFormat": "Change monitor input to {$ddcutilbridge.action.changeinput.source$}"
+                  }
+                ]
+              }
+            ]
+          },
           "data": [
             {
               "id": "ddcutilbridge.action.changeinput.source",

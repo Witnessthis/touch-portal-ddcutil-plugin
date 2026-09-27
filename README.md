@@ -60,6 +60,12 @@ switches to it when pressed:
 7. Source: pick this button's label — the dropdown is populated from the
    Video Sources setting and stays in sync as it's edited, no restart needed.
 
+**Change Input** also supports Touch Portal's **On Hold** tab, so a single
+button can switch to one source on a short press and a different one on a
+long press: add it under **On Press** with Source `HDMI 1`, say, and again
+under **On Hold** with Source `DisplayPort` — each placement keeps its own
+Source value.
+
 A button doesn't need the state wiring (steps 1–5) to use the action — step
 6–7 alone are enough for a plain input-switch button with no visual feedback.
 
