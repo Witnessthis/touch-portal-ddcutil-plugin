@@ -1,0 +1,45 @@
+{
+  "sdk": 13,
+  "version": 1,
+  "name": "ddcutil Bridge",
+  "id": "ddcutilbridge",
+  "plugin_start_cmd": "env TP_PORT=12136 python3 %TP_PLUGIN_FOLDER%ddcutil-bridge/bin/daemon.py",
+  "configuration": {
+    "colorDark": "#153B50",
+    "colorLight": "#1D8A99"
+  },
+  "settings": [
+    {
+      "name": "Video Sources",
+      "type": "text",
+      "default": "5=HDMI 1,6=HDMI 2,15=DisplayPort"
+    }
+  ],
+  "categories": [
+    {
+      "id": "ddcutilbridge.category",
+      "name": "ddcutil Bridge",
+      "actions": [
+        {
+          "id": "ddcutilbridge.action.changeinput",
+          "name": "Change Input",
+          "prefix": "ddcutil Bridge",
+          "type": "communicate",
+          "tryInline": true,
+          "format": "Change monitor input to {$ddcutilbridge.action.changeinput.source$}",
+          "data": [
+            {
+              "id": "ddcutilbridge.action.changeinput.source",
+              "type": "choice",
+              "label": "Source",
+              "default": "",
+              "valueChoices": []
+            }
+          ]
+        }
+      ],
+      "states": [],
+      "events": []
+    }
+  ]
+}
