@@ -21,8 +21,12 @@ Lifecycle:
      action.
   4. Handle the "Change Input" action, declared in entry.tp: its "Source"
      field is a `choice` list of the configured labels, kept in sync via a
-     `choiceUpdate` message sent on every rescan -- the action-data equivalent
-     of createState/removeState above. This action is a plain, always-fires
+     `choiceUpdate` message sent whenever Video Sources actually changes (not
+     on every rescan -- the poll loop's rescans re-check each source's status,
+     which has nothing to do with what labels are valid, so resending the same
+     choice list on every one of those would just repeatedly reset whatever
+     the user is mid-way through picking in Touch Portal's own action editor).
+     This action is a plain, always-fires
      action -- for a button that only does something on a genuine long press
      (or only on a quick tap, suppressing a long press), see the separate
      touch-portal-holdtiming-plugin project instead. Touch Portal has no way
@@ -146,6 +150,12 @@ class Bridge:
             )
             return
         if changed:
+            # Only sent when the label list itself actually changed -- unlike
+            # rescan()'s per-source status, which runs far more often (every
+            # POLL_SECONDS) but never changes what labels are valid.
+            self.tp.update_choices(
+                CHANGE_INPUT_SOURCE_FIELD_ID, [source.label for source in new.sources]
+            )
             self.request_rescan()
 
     def _on_action(self, action_id: str, data: dict[str, str]) -> None:
@@ -215,11 +225,9 @@ class Bridge:
 
         current_id = ddcutil_control.current_source()
         current: set[str] = set()
-        labels: list[str] = []
         for source in settings.sources:
             state_id = source_state_id(source.id)
             current.add(state_id)
-            labels.append(source.label)
             if current_id is None:
                 status = "unknown"
             elif current_id == source.id:
@@ -235,11 +243,6 @@ class Bridge:
             self.tp.remove_state(state_id)
             self._known_states.discard(state_id)
             log.info("removed state %s -- no longer in Video Sources", state_id)
-
-        # Keeps the Change Input action's "Source" dropdown in sync with the
-        # setting, the same way createState/removeState above keep the state
-        # list in sync.
-        self.tp.update_choices(CHANGE_INPUT_SOURCE_FIELD_ID, labels)
 
     def _set_state(self, state_id: str, description: str, value: str) -> None:
         if state_id not in self._known_states:
