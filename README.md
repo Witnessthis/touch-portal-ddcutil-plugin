@@ -63,47 +63,12 @@ switches to it when pressed:
 A button doesn't need the state wiring (steps 1–5) to use the action — step
 6–7 alone are enough for a plain input-switch button with no visual feedback.
 
-## Building a tap/long-press button
-
-**Change Input (Before Threshold)** and **Change Input (After Threshold)** are
-separate actions for a button where a short tap switches to one source and a
-genuine long press does something else entirely — e.g. tap to switch inputs,
-long-press to run a different plugin's action (say, `libvirt Bridge`'s VM
-Power). Unlike a plain button press, Touch Portal cannot cancel an action once
-it's fired, so these two run on *release*, gated by how long the button was
-actually held — placed under the button's **On Hold** tab (never **On Press**,
-which fires unconditionally, instantly, with no way to gate it):
-
-1. Button → **On Hold** tab → add action → **Change Input (Before Threshold)**.
-2. Source: same as the plain action.
-3. Threshold (ms): how long the button must be held for this *not* to count as
-   a tap. Default `1000`.
-4. Add a second action, **Change Input (After Threshold)**, with the same
-   Source and the *same* Threshold value.
-
-With matching thresholds, releasing before it fires the Before action and
-releasing at/after it fires the After action — never both, never neither. If
-you give them different thresholds you'll get a gap (releasing in between
-fires nothing) or an overlap (releasing in between fires both) — the plugin
-doesn't know the other placement's value, so keeping them in sync is on you.
-Either one works standalone too, e.g. a button with only **Change Input
-(After Threshold)** and nothing under On Press just does nothing on a quick
-tap.
-
-While held past its own threshold, **Change Input (After Threshold)** flips
-state `<label> long-press active` (the same label as its status state) to `1`
-(back to `0` on release) — wire whatever visual feedback you want off it (e.g.
-**On Event** → state changes to `1` → **Change Button Visuals** → **Icon** →
-Full Size Icon), entirely your choice; the plugin only provides the signal.
-**Before Threshold** has no such state — there's nothing meaningful to show
-mid-hold for it.
-
-Nothing stops you pairing a Before/After pair from *different* plugins on one
-button, as long as both sides use the same threshold — e.g. this plugin's
-Change Input (Before Threshold) for a quick tap, and another plugin's After
-Threshold action for a long press. Neither plugin needs to know the other
-exists; both just independently compare the same release time against the
-same number.
+For a button where a short tap does one thing and a genuine long press does
+something else entirely (e.g. tap to switch inputs, long-press to run a
+different plugin's action), see the separate `touch-portal-holdtiming-plugin`
+project — Touch Portal only allows a single action in a button's **On Hold**
+tab, so gating this plugin's own action by hold duration doesn't work; a
+dedicated timing plugin paired with plain actions like this one's does.
 
 ### Why there's a short delay sometimes
 

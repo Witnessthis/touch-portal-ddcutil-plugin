@@ -22,21 +22,18 @@ Lifecycle:
   4. Handle the "Change Input" action, declared in entry.tp: its "Source"
      field is a `choice` list of the configured labels, kept in sync via a
      `choiceUpdate` message sent on every rescan -- the action-data equivalent
-     of createState/removeState above. Two further entry.tp actions, "Change
-     Input (Before Threshold)" and "Change Input (After Threshold)", share the
-     same Source field plus a "Threshold (ms)" one, and run only if the button
-     was released before/after that many milliseconds -- see _on_hold_release.
-     Deciding whether a press "counts" is this plugin's job entirely: Touch
-     Portal reports how long a hold-enabled button was held with no minimum
-     built in (see lib/tp_client.py), so an ordinary "Change Input" placed
-     under On Press still just fires immediately, unconditionally, same as
-     ever.
+     of createState/removeState above. This action is a plain, always-fires
+     action -- for a button that only does something on a genuine long press
+     (or only on a quick tap, suppressing a long press), see the separate
+     touch-portal-holdtiming-plugin project instead. Touch Portal has no way
+     to gate a plain action by hold duration (there's no minimum enforced --
+     see lib/tp_client.py's history for why an in-plugin attempt at this was
+     abandoned), so this plugin no longer tries.
   5. Exit cleanly on Touch Portal's "closePlugin" message, the connection to
      it dropping, or SIGTERM/SIGINT.
 
-This process's only side effect outside itself is the "Change Input" action (and
-its Before/After Threshold variants) running `ddcutil setvcp` -- every other code
-path only reads.
+This process's only side effect outside itself is the "Change Input" action
+running `ddcutil setvcp` -- every other code path only reads.
 """
 
 from __future__ import annotations
@@ -84,44 +81,12 @@ def source_state_id(source_id: int) -> str:
     return f"{SOURCE_STATE_PREFIX}{source_id}"
 
 
-def source_hold_state_id(label: str) -> str:
-    return f"ddcutilbridge.source.{label}.holdactive"
-
-
 CHANGE_INPUT_ACTION_ID = "ddcutilbridge.action.changeinput"
 CHANGE_INPUT_SOURCE_FIELD_ID = "ddcutilbridge.action.changeinput.source"
-
-CHANGE_INPUT_BEFORE_ACTION_ID = "ddcutilbridge.action.changeinput.before"
-CHANGE_INPUT_BEFORE_SOURCE_FIELD_ID = "ddcutilbridge.action.changeinput.before.source"
-CHANGE_INPUT_BEFORE_THRESHOLD_FIELD_ID = "ddcutilbridge.action.changeinput.before.threshold"
-
-CHANGE_INPUT_AFTER_ACTION_ID = "ddcutilbridge.action.changeinput.after"
-CHANGE_INPUT_AFTER_SOURCE_FIELD_ID = "ddcutilbridge.action.changeinput.after.source"
-CHANGE_INPUT_AFTER_THRESHOLD_FIELD_ID = "ddcutilbridge.action.changeinput.after.threshold"
-
-# Every entry.tp data field id, across all three Change Input variants, that
-# should track the Video Sources setting -- kept in sync via choiceUpdate on
-# every rescan (see rescan()). Each variant needs its own id updated
-# separately; Touch Portal's choiceUpdate targets one field id at a time.
-SOURCE_CHOICE_FIELD_IDS = (
-    CHANGE_INPUT_SOURCE_FIELD_ID, CHANGE_INPUT_BEFORE_SOURCE_FIELD_ID, CHANGE_INPUT_AFTER_SOURCE_FIELD_ID,
-)
 
 # Must match entry.tp's settings[].name exactly -- that field doubles as the id
 # Touch Portal uses as the key in its "settings"/"info" messages.
 SETTING_VIDEO_SOURCES = "Video Sources"
-
-# Default entry.tp gives a "Threshold (ms)" field of 1000 -- this is only a
-# fallback for a value that somehow doesn't parse as a positive number.
-DEFAULT_THRESHOLD_MS = 1000.0
-
-
-def parse_threshold_ms(raw: str) -> float:
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        return DEFAULT_THRESHOLD_MS
-    return value if value > 0 else DEFAULT_THRESHOLD_MS
 
 
 @dataclass(frozen=True)
@@ -147,17 +112,9 @@ class Bridge:
             on_close=self._on_tp_close,
             on_action=self._on_action,
             on_settings=self._on_settings,
-            on_hold_release=self._on_hold_release,
-            on_hold_feedback=self._on_hold_feedback,
         )
         # Only touched by rescan(), which only ever runs on the rescan worker.
         self._known_states: set[str] = set()
-        # Long-press feedback states: also only touched by rescan() (created
-        # once, on first sight of a source, and never removed or re-written --
-        # see _ensure_hold_state). _on_hold_feedback runs on other threads, but
-        # only ever calls update_state on an id already created here, so it never
-        # touches this set and needs no lock of its own.
-        self._known_hold_states: set[str] = set()
         self._change_lock = threading.Lock()
         self._rescan_event = threading.Event()
         self._stop_event = threading.Event()
@@ -193,39 +150,16 @@ class Bridge:
 
     def _on_action(self, action_id: str, data: dict[str, str]) -> None:
         if action_id == CHANGE_INPUT_ACTION_ID:
-            self._dispatch_change_input(data.get(CHANGE_INPUT_SOURCE_FIELD_ID, ""))
+            self._on_change_input_action(data)
         else:
             log.warning("received unknown action id %r", action_id)
 
-    def _on_hold_release(self, action_id: str, data: dict[str, str], held_seconds: float) -> None:
-        """A Before/After Threshold button was released. tp_client.py has no idea
-        what any of this means -- it just reports how long the button was held;
-        this is where that turns into "should this actually run"."""
-        held_ms = held_seconds * 1000.0
-        if action_id == CHANGE_INPUT_BEFORE_ACTION_ID:
-            threshold_ms = parse_threshold_ms(data.get(CHANGE_INPUT_BEFORE_THRESHOLD_FIELD_ID, ""))
-            if held_ms < threshold_ms:
-                self._dispatch_change_input(data.get(CHANGE_INPUT_BEFORE_SOURCE_FIELD_ID, ""))
-        elif action_id == CHANGE_INPUT_AFTER_ACTION_ID:
-            threshold_ms = parse_threshold_ms(data.get(CHANGE_INPUT_AFTER_THRESHOLD_FIELD_ID, ""))
-            if held_ms >= threshold_ms:
-                self._dispatch_change_input(data.get(CHANGE_INPUT_AFTER_SOURCE_FIELD_ID, ""))
-
-    def _on_hold_feedback(self, action_id: str, data: dict[str, str], active: bool) -> None:
-        # Only the After Threshold action gets a feedback state -- nothing
-        # meaningful to show mid-hold for a Before Threshold button (it either
-        # already missed its window or hasn't yet, and either way there's
-        # nothing for the user to usefully react to while still holding).
-        if action_id == CHANGE_INPUT_AFTER_ACTION_ID:
-            label = data.get(CHANGE_INPUT_AFTER_SOURCE_FIELD_ID, "")
-            if label:
-                self.tp.update_state(source_hold_state_id(label), "1" if active else "0")
-
-    def _dispatch_change_input(self, label: str) -> None:
+    def _on_change_input_action(self, data: dict[str, str]) -> None:
         problem = self.settings.problem()
         if problem:
             log.warning("Change Input action ignored -- %s", problem)
             return
+        label = data.get(CHANGE_INPUT_SOURCE_FIELD_ID, "")
         # Run off the Touch Portal read thread, same reason as the libvirt
         # plugin's power/USB actions: ddcutil calls can be slow, and this
         # callback runs on the thread that reads from Touch Portal.
@@ -293,25 +227,19 @@ class Bridge:
             else:
                 status = "detached"
             self._set_state(state_id, f"{source.label} status", status)
-            self._ensure_hold_state(
-                source_hold_state_id(source.label), f"{source.label} long-press active"
-            )
             log.info("source %s (id %s) -> %s", source.label, source.id, status)
 
         # A source no longer in the setting has nothing left to show -- remove
         # its state so Touch Portal's list of states matches the setting.
-        # Long-press feedback states are never removed here (see
-        # _ensure_hold_state) -- an orphaned one is harmless.
         for state_id in sorted(self._known_states - current):
             self.tp.remove_state(state_id)
             self._known_states.discard(state_id)
             log.info("removed state %s -- no longer in Video Sources", state_id)
 
-        # Keeps every Change Input variant's "Source" dropdown in sync with the
+        # Keeps the Change Input action's "Source" dropdown in sync with the
         # setting, the same way createState/removeState above keep the state
         # list in sync.
-        for field_id in SOURCE_CHOICE_FIELD_IDS:
-            self.tp.update_choices(field_id, labels)
+        self.tp.update_choices(CHANGE_INPUT_SOURCE_FIELD_ID, labels)
 
     def _set_state(self, state_id: str, description: str, value: str) -> None:
         if state_id not in self._known_states:
@@ -321,17 +249,6 @@ class Bridge:
             self.tp.create_state(state_id, description, "")
             self._known_states.add(state_id)
         self.tp.update_state(state_id, value)
-
-    def _ensure_hold_state(self, state_id: str, description: str) -> None:
-        """Like _set_state's create-if-unknown half, but never pushes a value --
-        a rescan can run at any time, including while a button is genuinely being
-        held, and must not stomp on the "1" _on_hold_feedback is showing mid-hold.
-        Only needs to exist by the time a button can reference it, which rescan
-        already guarantees by running before the source shows up in any
-        dropdown."""
-        if state_id not in self._known_hold_states:
-            self.tp.create_state(state_id, description, "0")
-            self._known_hold_states.add(state_id)
 
     def request_rescan(self) -> None:
         self._rescan_event.set()
