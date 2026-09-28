@@ -1,6 +1,6 @@
 {
   "sdk": 13,
-  "version": 3,
+  "version": 4,
   "name": "ddcutil Bridge",
   "id": "ddcutilbridge",
   "plugin_start_cmd": "env TP_PORT=12136 python3 %TP_PLUGIN_FOLDER%ddcutil-bridge/bin/daemon.py",
@@ -26,7 +26,6 @@
           "prefix": "ddcutil Bridge",
           "type": "communicate",
           "tryInline": true,
-          "hasHoldFunctionality": true,
           "format": "Change monitor input to {$ddcutilbridge.action.changeinput.source$}",
           "data": [
             {
@@ -35,6 +34,56 @@
               "label": "Source",
               "default": "",
               "valueChoices": []
+            }
+          ]
+        },
+        {
+          "id": "ddcutilbridge.action.changeinput.before",
+          "name": "Change Input (Before Threshold)",
+          "prefix": "ddcutil Bridge",
+          "type": "communicate",
+          "tryInline": true,
+          "hasHoldFunctionality": true,
+          "format": "Change monitor input to {$ddcutilbridge.action.changeinput.before.source$} if released before {$ddcutilbridge.action.changeinput.before.threshold$}ms",
+          "data": [
+            {
+              "id": "ddcutilbridge.action.changeinput.before.source",
+              "type": "choice",
+              "label": "Source",
+              "default": "",
+              "valueChoices": []
+            },
+            {
+              "id": "ddcutilbridge.action.changeinput.before.threshold",
+              "type": "number",
+              "label": "Threshold (ms)",
+              "default": 1000,
+              "minValue": 100
+            }
+          ]
+        },
+        {
+          "id": "ddcutilbridge.action.changeinput.after",
+          "name": "Change Input (After Threshold)",
+          "prefix": "ddcutil Bridge",
+          "type": "communicate",
+          "tryInline": true,
+          "hasHoldFunctionality": true,
+          "format": "Change monitor input to {$ddcutilbridge.action.changeinput.after.source$} if released after {$ddcutilbridge.action.changeinput.after.threshold$}ms",
+          "data": [
+            {
+              "id": "ddcutilbridge.action.changeinput.after.source",
+              "type": "choice",
+              "label": "Source",
+              "default": "",
+              "valueChoices": []
+            },
+            {
+              "id": "ddcutilbridge.action.changeinput.after.threshold",
+              "type": "number",
+              "label": "Threshold (ms)",
+              "default": 1000,
+              "minValue": 100
             }
           ]
         }
