@@ -15,7 +15,9 @@ import re
 import subprocess
 from dataclasses import dataclass
 
-DDCUTIL = ["ddcutil"]
+# Pinned to the AMD HDMI bus: the monitor is also reachable over the Nvidia
+# passthrough card (/dev/i2c-10), which ddcutil would otherwise probe on every call.
+DDCUTIL = ["ddcutil", "--bus", "1"]
 INPUT_SOURCE_FEATURE = "0x60"
 
 # ddcutil's --terse getvcp output is e.g. "VCP 60 SNC x05" -- the current value
