@@ -1,14 +1,12 @@
 # touch-portal-ddcutil-plugin
 
 A Touch Portal plugin for `ddcutil`: tracks which video input a monitor is
-currently on and can switch it — read directly from the monitor over DDC/CI
-every time, so it stays correct no matter what changes the input (a Touch
-Portal button, the monitor's own buttons, another program, ...).
+currently on and can switch it — read directly from the monitor over DDC/CI.
 
 This replaces a pair of local shell scripts (`change-display-input.sh` /
 `init-video-source-tmp.sh`) with a Touch Portal-native plugin: no tmp state
-files, no separate init step — the daemon asks `ddcutil` directly and polls
-periodically to catch changes made outside Touch Portal.
+files, no separate init step — the daemon asks `ddcutil` directly at startup
+and after every input change it makes.
 
 ## Requirements
 
@@ -70,13 +68,13 @@ project — Touch Portal only allows a single action in a button's **On Hold**
 tab, so gating this plugin's own action by hold duration doesn't work; a
 dedicated timing plugin paired with plain actions like this one's does.
 
-### Why there's a short delay sometimes
+### Why a button can show the wrong input
 
 Unlike libvirt (which has `virsh event --all --loop`), DDC/CI has no event
-stream to watch. A Change Input button's own press updates state immediately,
-but an input switch made some other way (the monitor's own buttons, another
-program) is only noticed by a poll that runs every few seconds — so it can
-take a moment for a button's look to catch up in that case.
+stream to watch, and switching inputs fires no DRM uevent either. The plugin
+deliberately doesn't poll the monitor over I2C, so an input switch made some
+other way (the monitor's own buttons, another program) isn't shown until the
+next Change Input press, settings change, or Touch Portal restart.
 
 ## License
 

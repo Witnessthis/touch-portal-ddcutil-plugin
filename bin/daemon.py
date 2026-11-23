@@ -14,15 +14,15 @@ Lifecycle:
      and every state is left exactly as it is (nothing is removed), so
      buttons pick up where they left off once the setting is fixed.
   3. Unlike libvirt (which has `virsh event --all --loop`), ddcutil/DDC-CI has
-     no event stream -- the monitor's own buttons or another program can
-     change the input with nothing telling this process it happened. So a
-     background loop requests a rescan every POLL_SECONDS, on top of the
-     rescan already requested after every settings change and Change Input
-     action.
+     no event stream, and switching inputs fires no DRM uevent either. Rather
+     than poll the monitor over I2C, a rescan runs only at startup, after every
+     settings change, and after every Change Input action. An input change made
+     with the monitor's own buttons or another program therefore isn't shown
+     until the next one of those.
   4. Handle the "Change Input" action, declared in entry.tp: its "Source"
      field is a `choice` list of the configured labels, kept in sync via a
      `choiceUpdate` message sent whenever Video Sources actually changes (not
-     on every rescan -- the poll loop's rescans re-check each source's status,
+     on every rescan -- rescans re-check each source's status,
      which has nothing to do with what labels are valid, so resending the same
      choice list on every one of those would just repeatedly reset whatever
      the user is mid-way through picking in Touch Portal's own action editor).
@@ -61,7 +61,6 @@ from lib.tp_client import DEFAULT_PORT, TouchPortalClient  # noqa: E402
 
 LOG_PATH = REPO_ROOT / "daemon.log"
 DEBOUNCE_SECONDS = 0.5
-POLL_SECONDS = 5  # catches input changes made by the monitor's own buttons
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,8 +150,8 @@ class Bridge:
             return
         if changed:
             # Only sent when the label list itself actually changed -- unlike
-            # rescan()'s per-source status, which runs far more often (every
-            # POLL_SECONDS) but never changes what labels are valid.
+            # rescan()'s per-source status, which also runs after every Change
+            # Input action but never changes what labels are valid.
             self.tp.update_choices(
                 CHANGE_INPUT_SOURCE_FIELD_ID, [source.label for source in new.sources]
             )
@@ -202,9 +201,7 @@ class Bridge:
         else:
             log.error("ddcutil setvcp 0x60 %s failed: %s", source.id, result.message)
 
-        # The poll loop would notice the change on its own eventually, but
-        # request a rescan directly too so the state reflects the command's
-        # outcome without waiting up to POLL_SECONDS for it.
+        # Re-read the input so the state reflects the command's actual outcome.
         self.request_rescan()
 
     def start(self) -> None:
@@ -214,7 +211,6 @@ class Bridge:
         # The first rescan is requested by _on_settings once Touch Portal has
         # sent the settings, and goes through the worker like every later one.
         threading.Thread(target=self._rescan_worker, daemon=True).start()
-        threading.Thread(target=self._poll_loop, daemon=True).start()
 
     def rescan(self) -> None:
         settings = self.settings
@@ -269,12 +265,6 @@ class Bridge:
                 self.rescan()
             except Exception:
                 log.exception("rescan failed")
-
-    def _poll_loop(self) -> None:
-        """ddcutil has no event stream to watch, so this is what notices an
-        input change made by the monitor's own buttons or another program."""
-        while not self._stop_event.wait(POLL_SECONDS):
-            self.request_rescan()
 
     def run_forever(self) -> None:
         self._stop_event.wait()
